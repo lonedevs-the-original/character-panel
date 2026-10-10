@@ -53,7 +53,7 @@ begin
     return jsonb_build_object(
       'profile', (select to_jsonb(x) from (select user_id, display_name, level, xp, active_arc, title from public.progress_profiles where user_id = cfg.owner_id) x),
       'attributes', coalesce((select jsonb_agg(to_jsonb(x) order by sort_order) from (select id, name, domain, score, max_score, accent, sort_order from public.progress_attributes where user_id = cfg.owner_id) x), '[]'::jsonb),
-      'quests', coalesce((select jsonb_agg(to_jsonb(x) order by created_at) from (select id, title, domain, progress, target, unit, status, due_date from public.progress_quests where user_id = cfg.owner_id and status <> 'archived') x), '[]'::jsonb),
+      'quests', coalesce((select jsonb_agg(to_jsonb(x) order by created_at) from (select id, title, domain, progress, target, unit, status, due_date, created_at from public.progress_quests where user_id = cfg.owner_id and status <> 'archived') x), '[]'::jsonb),
       'entries', coalesce((select jsonb_agg(to_jsonb(x) order by occurred_at desc) from (select id, kind, domain, metric, numeric_value, unit, summary, confidence, occurred_at, tags, status, source_reference, suggested_effects from public.progress_entries where user_id = cfg.owner_id order by occurred_at desc limit 24) x), '[]'::jsonb)
     );
   elsif p_action = 'update_quest' then
