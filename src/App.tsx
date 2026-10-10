@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { Session } from '@supabase/supabase-js'
 import { ArrowUpRight, BookOpen, ChevronRight, CircleDot, Download, FileInput, LogOut, Menu, Plus, ShieldCheck, Sparkles, X } from 'lucide-react'
-import { supabase } from './lib/supabase'
+import { customAuth } from './lib/api'
 import type { Attribute, EvidenceEntry, Profile, Quest, SubmissionEnvelope } from './types'
 import { Login } from './components/Login'
 import { AttributeCard } from './components/AttributeCard'
@@ -13,8 +12,7 @@ import './styles.css'
 type Modal = 'evidence' | 'import' | null
 
 export default function App() {
-  const [session, setSession] = useState<Session | null>(null)
-  const [authReady, setAuthReady] = useState(false)
+  const [signedIn, setSignedIn] = useState(() => Boolean(customAuth.getToken()))
   const [profile, setProfile] = useState<Profile | null>(null)
   const [attributes, setAttributes] = useState<Attribute[]>([])
   const [quests, setQuests] = useState<Quest[]>([])
@@ -24,29 +22,15 @@ export default function App() {
   const [notice, setNotice] = useState('')
   const [mobileNav, setMobileNav] = useState(false)
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => { setSession(data.session); setAuthReady(true) })
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => { setSession(next); setAuthReady(true) })
-    return () => data.subscription.unsubscribe()
-  }, [])
-
   const loadData = useCallback(async () => {
-    if (!session) return
+    if (!signedIn) return
     setLoading(true)
-    const [p, a, q, e] = await Promise.all([
-      supabase.from('progress_profiles').select('*').single(),
-      supabase.from('progress_attributes').select('*').order('sort_order'),
-      supabase.from('progress_quests').select('*').neq('status', 'archived').order('created_at'),
-      supabase.from('progress_entries').select('*').order('occurred_at', { ascending: false }).limit(24),
-    ])
-    if (p.data) setProfile(p.data)
-    if (a.data) setAttributes(a.data)
-    if (q.data) setQuests(q.data)
-    if (e.data) setEntries(e.data)
-    const error = p.error || a.error || q.error || e.error
-    if (error) setNotice(error.message)
+    try {
+      const data = await customAuth.call<{ profile: Profile; attributes: Attribute[]; quests: Quest[]; entries: EvidenceEntry[] }>('bootstrap')
+      setProfile(data.profile); setAttributes(data.attributes); setQuests(data.quests); setEntries(data.entries)
+    } catch (error) { customAuth.clear(); setSignedIn(false); setNotice(error instanceof Error ? error.message : 'Session expired') }
     setLoading(false)
-  }, [session])
+  }, [signedIn])
 
   useEffect(() => { void loadData() }, [loadData])
 
@@ -55,35 +39,21 @@ export default function App() {
 
   async function updateQuest(quest: Quest, progress: number) {
     const status = progress >= quest.target ? 'completed' : 'active'
-    const { error } = await supabase.from('progress_quests').update({ progress, status, completed_at: status === 'completed' ? new Date().toISOString() : null }).eq('id', quest.id)
-    if (!error) setQuests((current) => current.map((item) => item.id === quest.id ? { ...item, progress, status } : item))
+    try { await customAuth.call('update_quest', { id: quest.id, progress }); setQuests((current) => current.map((item) => item.id === quest.id ? { ...item, progress, status } : item)) } catch (e) { setNotice(e instanceof Error ? e.message : 'Update failed') }
   }
 
   async function saveEvidence(draft: { domain: string; kind: string; summary: string; metric: string; value: string; unit: string }) {
-    const { error } = await supabase.from('progress_entries').insert({ user_id: session!.user.id, domain: draft.domain, kind: draft.kind, summary: draft.summary, metric: draft.metric || null, numeric_value: draft.value ? Number(draft.value) : null, unit: draft.unit || null, confidence: 1, occurred_at: new Date().toISOString(), tags: [], status: 'approved', source_reference: 'direct entry', suggested_effects: [] })
-    if (error) setNotice(error.message); else { setModal(null); setNotice('Evidence added to your record.'); await loadData() }
+    try { await customAuth.call('add_evidence', draft); setModal(null); setNotice('Evidence added to your record.'); await loadData() } catch (e) { setNotice(e instanceof Error ? e.message : 'Save failed') }
   }
 
   async function importEnvelope(envelope: SubmissionEnvelope) {
     const sharedEffects = envelope.suggested_effects ?? []
-    const rows = envelope.entries.map((entry) => ({ user_id: session!.user.id, domain: entry.domain, kind: entry.kind, summary: entry.summary, metric: entry.metric ?? null, numeric_value: entry.value ?? null, unit: entry.unit ?? null, confidence: entry.confidence ?? 1, occurred_at: entry.occurred_at ?? `${envelope.effective_date ?? new Date().toISOString().slice(0, 10)}T12:00:00+05:00`, tags: entry.tags ?? [], sensitive: entry.sensitive ?? false, status: 'pending', source_reference: envelope.source?.reference ?? 'conversation import', suggested_effects: sharedEffects }))
-    const { error } = await supabase.from('progress_entries').insert(rows)
-    if (error) setNotice(error.message); else { setModal(null); setNotice(`${rows.length} conversation update${rows.length === 1 ? '' : 's'} added for review.`); await loadData() }
+    const rows = envelope.entries.map((entry) => ({ ...entry, occurred_at: entry.occurred_at ?? `${envelope.effective_date ?? new Date().toISOString().slice(0, 10)}T12:00:00+05:00` }))
+    try { await customAuth.call('import_envelope', { ...envelope, entries: rows, suggested_effects: sharedEffects }); setModal(null); setNotice(`${rows.length} conversation update${rows.length === 1 ? '' : 's'} added for review.`); await loadData() } catch (e) { setNotice(e instanceof Error ? e.message : 'Import failed') }
   }
 
   async function reviewEntry(entry: EvidenceEntry, status: 'approved' | 'rejected') {
-    const { error } = await supabase.from('progress_entries').update({ status, reviewed_at: new Date().toISOString() }).eq('id', entry.id)
-    if (error) { setNotice(error.message); return }
-    if (status === 'approved' && entry.suggested_effects?.[0]) {
-      const effect = entry.suggested_effects[0]
-      const attribute = attributes.find((item) => item.name.toLowerCase() === effect.target.toLowerCase())
-      if (attribute) {
-        const signedDelta = effect.delta ?? (effect.direction === 'decrease' ? -1 : effect.direction === 'none' ? 0 : 1)
-        const next = Math.max(0, Math.min(attribute.max_score, attribute.score + signedDelta))
-        await supabase.from('progress_attributes').update({ score: next, updated_at: new Date().toISOString() }).eq('id', attribute.id)
-      }
-    }
-    await loadData()
+    try { await customAuth.call('review_entry', { id: entry.id, status }); await loadData() } catch (e) { setNotice(e instanceof Error ? e.message : 'Review failed') }
   }
 
   function exportData() {
@@ -91,8 +61,7 @@ export default function App() {
     const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `personal-progression-${new Date().toISOString().slice(0,10)}.json`; anchor.click(); URL.revokeObjectURL(url)
   }
 
-  if (!authReady) return <div className="boot-screen"><CircleDot className="spin" /> Initializing record</div>
-  if (!session) return <Login />
+  if (!signedIn) return <Login onLogin={() => setSignedIn(true)} />
 
   const levelProgress = profile ? profile.xp % 100 : 0
   return <div className="app-shell">
@@ -100,7 +69,7 @@ export default function App() {
       <div className="sidebar-brand"><span>A</span><div><strong>AXIOM</strong><small>PERSONAL OS</small></div></div>
       <button className="mobile-close" onClick={()=>setMobileNav(false)}><X/></button>
       <nav><a className="active" href="#overview"><CircleDot size={16}/> Overview</a><a href="#attributes"><Sparkles size={16}/> Attributes</a><a href="#quests"><BookOpen size={16}/> Quests</a><a href="#evidence"><ShieldCheck size={16}/> Evidence</a></nav>
-      <div className="sidebar-bottom"><button onClick={exportData}><Download size={16}/> Export record</button><button onClick={()=>supabase.auth.signOut()}><LogOut size={16}/> Sign out</button><span>PRIVATE · OWNER LOCKED</span></div>
+      <div className="sidebar-bottom"><button onClick={exportData}><Download size={16}/> Export record</button><button onClick={()=>{customAuth.clear();setSignedIn(false)}}><LogOut size={16}/> Sign out</button><span>PRIVATE · OWNER LOCKED</span></div>
     </aside>
     <main className="dashboard">
       <header><button className="menu-button" onClick={()=>setMobileNav(true)}><Menu/></button><div><span className="eyebrow">Personal progression / live record</span><h1>Good evening, {profile?.display_name ?? 'Javohir'}.</h1></div><div className="header-actions"><button className="secondary" onClick={()=>setModal('import')}><FileInput size={16}/> Import update</button><button className="primary" onClick={()=>setModal('evidence')}><Plus size={16}/> Add evidence</button></div></header>

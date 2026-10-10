@@ -1,8 +1,9 @@
 import { FormEvent, useState } from 'react'
 import { ArrowRight, LockKeyhole, Orbit } from 'lucide-react'
-import { ownerEmail, supabase } from '../lib/supabase'
+import { ownerEmail } from '../lib/supabase'
+import { customAuth } from '../lib/api'
 
-export function Login() {
+export function Login({ onLogin }: { onLogin: () => void }) {
   const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -11,19 +12,9 @@ export function Login() {
     event.preventDefault()
     setBusy(true)
     setMessage('')
-    const { error } = await supabase.auth.signInWithPassword({ email: ownerEmail, password })
-    setBusy(false)
-    if (error) setMessage(error.message)
-  }
-
-  async function sendMagicLink() {
-    setBusy(true)
-    const { error } = await supabase.auth.signInWithOtp({
-      email: ownerEmail,
-      options: { shouldCreateUser: false, emailRedirectTo: window.location.origin },
-    })
-    setBusy(false)
-    setMessage(error ? error.message : 'Secure sign-in link sent. Check your email.')
+    try { await customAuth.login(ownerEmail, password); onLogin() }
+    catch { setMessage('Invalid email or password.') }
+    finally { setBusy(false) }
   }
 
   return (
@@ -50,7 +41,6 @@ export function Login() {
             <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Your Supabase password" autoComplete="current-password" required />
             <button className="primary wide" disabled={busy}>{busy ? 'Opening…' : 'Enter system'} <ArrowRight size={17} /></button>
           </form>
-          <button className="text-button" onClick={sendMagicLink} disabled={busy}>Email me a secure sign-in link</button>
           {message && <p className="form-message" role="status">{message}</p>}
         </div>
       </section>
