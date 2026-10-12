@@ -3,5 +3,15 @@
     { "source": "/mcp", "destination": "/api/mcp" },
     { "source": "/oauth/authorize", "destination": "/api/oauth/authorize" },
     { "source": "/oauth/token", "destination": "/api/oauth/token" }
+  ],
+  "headers": [
+    {
+      "source": "/.well-known/:path*",
+      "headers": [
+        { "key": "Content-Type", "value": "application/json; charset=utf-8" },
+        { "key": "Cache-Control", "value": "public, max-age=300" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" }
+      ]
+    }
   ]
 }
