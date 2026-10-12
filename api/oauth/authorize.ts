@@ -47,10 +47,15 @@ export default async function handler(req: ApiRequest, res: ServerResponse) {
     const password = params.get('password') || ''
     try {
       const session = await ownerLogin(OWNER_EMAIL, password)
+      console.info('OAuth owner authentication accepted', { clientOrigin: safeOrigin(clientId), hasState: Boolean(state) })
       const code = seal({ typ: 'code', exp: Math.floor(Date.now() / 1000) + 300, client_id: clientId, redirect_uri: redirectUri, code_challenge: challenge, resource, scope, session })
       const target = new URL(redirectUri); target.searchParams.set('code', code); if (state) target.searchParams.set('state', state); target.searchParams.set('iss', issuer)
+      console.info('OAuth authorization redirect issued', { redirectOrigin: target.origin, redirectPath: target.pathname })
       res.writeHead(302, { Location: target.toString(), 'Cache-Control': 'no-store' }); return res.end()
-    } catch { return sendHtml(res, 401, loginPage(params, 'That password did not unlock Axiom.')) }
+    } catch (error) {
+      console.warn('OAuth owner authentication rejected', { reason: error instanceof Error ? error.message : 'Unknown error' })
+      return sendHtml(res, 401, loginPage(params, 'That password did not unlock Axiom.'))
+    }
   }
   return sendHtml(res, 200, loginPage(params))
 }

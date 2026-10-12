@@ -17,6 +17,7 @@ export default async function handler(req: ApiRequest, res: ServerResponse) {
       const code = open(params.get('code') || '', 'code')
       const redirectUri = params.get('redirect_uri') || ''
       if (code.client_id !== clientId || code.redirect_uri !== redirectUri || !validateClient(clientId, redirectUri) || resource !== code.resource || !verifyPkce(params.get('code_verifier') || '', code.code_challenge || '')) throw new Error('Authorization code validation failed')
+      console.info('OAuth authorization code accepted')
       return tokenResponse(res, code.client_id, code.resource, code.scope, code.session)
     }
     if (grantType === 'refresh_token') {
@@ -25,7 +26,10 @@ export default async function handler(req: ApiRequest, res: ServerResponse) {
       return tokenResponse(res, refresh.client_id, refresh.resource, refresh.scope, refresh.session)
     }
     return oauthError(res, 'unsupported_grant_type', 'Use authorization_code or refresh_token')
-  } catch { return oauthError(res, 'invalid_grant', 'The authorization grant is invalid or expired') }
+  } catch (error) {
+    console.warn('OAuth token exchange rejected', { grantType, reason: error instanceof Error ? error.message : 'Unknown error' })
+    return oauthError(res, 'invalid_grant', 'The authorization grant is invalid or expired')
+  }
 }
 
 function tokenResponse(res: ServerResponse, clientId: string, resource: string, scope: string, session: string) {
