@@ -1,0 +1,7 @@
+{
+  "resource": "https://character-panel.vercel.app/mcp",
+  "authorization_servers": ["https://character-panel.vercel.app"],
+  "scopes_supported": ["axiom.read", "axiom.write", "offline_access"],
+  "resource_name": "Axiom Personal Progression",
+  "resource_documentation": "https://character-panel.vercel.app"
+}
