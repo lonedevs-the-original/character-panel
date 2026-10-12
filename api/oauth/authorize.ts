@@ -10,7 +10,7 @@ function paramsFrom(req: ApiRequest, raw?: string) {
 }
 
 function failRedirect(res: ServerResponse, redirectUri: string, state: string, message: string) {
-  const target = new URL(redirectUri); target.searchParams.set('error', 'access_denied'); target.searchParams.set('error_description', message); target.searchParams.set('state', state); target.searchParams.set('iss', issuer)
+  const target = new URL(redirectUri); target.searchParams.set('error', 'access_denied'); target.searchParams.set('error_description', message); if (state) target.searchParams.set('state', state); target.searchParams.set('iss', issuer)
   res.writeHead(302, { Location: target.toString(), 'Cache-Control': 'no-store' }); res.end()
 }
 
@@ -23,7 +23,23 @@ export default async function handler(req: ApiRequest, res: ServerResponse) {
   const resource = params.get('resource') || ''
   const challenge = params.get('code_challenge') || ''
   const challengeMethod = params.get('code_challenge_method') || ''
-  if (!validateClient(clientId, redirectUri) || params.get('response_type') !== 'code' || resource !== MCP_RESOURCE || challengeMethod !== 'S256' || !challenge || !state) return sendHtml(res, 400, '<h1>Invalid OAuth request</h1>')
+  const checks = {
+    client: validateClient(clientId, redirectUri),
+    responseType: params.get('response_type') === 'code',
+    resource: resource === MCP_RESOURCE,
+    pkceMethod: challengeMethod === 'S256',
+    pkceChallenge: Boolean(challenge),
+  }
+  if (Object.values(checks).some(valid => !valid)) {
+    const failed = Object.entries(checks).filter(([, valid]) => !valid).map(([name]) => name)
+    console.warn('Rejected OAuth authorization request', {
+      failed,
+      clientOrigin: safeOrigin(clientId),
+      redirectOrigin: safeOrigin(redirectUri),
+      hasState: Boolean(state),
+    })
+    return sendHtml(res, 400, `<h1>Invalid OAuth request</h1><p>Rejected fields: ${escapeHtml(failed.join(', '))}</p>`)
+  }
   let scope: string
   try { scope = normalizeScopes(params.get('scope')) } catch { return failRedirect(res, redirectUri, state, 'Unsupported permission scope') }
 
@@ -32,11 +48,15 @@ export default async function handler(req: ApiRequest, res: ServerResponse) {
     try {
       const session = await ownerLogin(OWNER_EMAIL, password)
       const code = seal({ typ: 'code', exp: Math.floor(Date.now() / 1000) + 300, client_id: clientId, redirect_uri: redirectUri, code_challenge: challenge, resource, scope, session })
-      const target = new URL(redirectUri); target.searchParams.set('code', code); target.searchParams.set('state', state); target.searchParams.set('iss', issuer)
+      const target = new URL(redirectUri); target.searchParams.set('code', code); if (state) target.searchParams.set('state', state); target.searchParams.set('iss', issuer)
       res.writeHead(302, { Location: target.toString(), 'Cache-Control': 'no-store' }); return res.end()
     } catch { return sendHtml(res, 401, loginPage(params, 'That password did not unlock Axiom.')) }
   }
   return sendHtml(res, 200, loginPage(params))
+}
+
+function safeOrigin(value: string) {
+  try { return new URL(value).origin } catch { return 'invalid' }
 }
 
 function loginPage(params: URLSearchParams, error = '') {
