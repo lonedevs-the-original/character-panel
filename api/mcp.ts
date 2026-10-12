@@ -15,6 +15,8 @@ const schemes = [{ type: 'oauth2', scopes: ['axiom.read', 'axiom.write'] }]
 const rankedItem = z.object({ name: z.string().min(1).max(120), rank: z.string().max(60).optional(), level: z.number().nonnegative().optional(), description: z.string().max(800).optional(), evidence: z.array(z.string().max(300)).max(20).optional(), confidence: z.number().min(0).max(1).optional(), status: z.enum(['active','latent','locked','unassessed']).optional(), parent: z.string().max(120).optional() })
 const achievement = z.object({ name: z.string().min(1).max(120), category: z.string().max(60).optional(), rarity: z.string().max(60).optional(), description: z.string().max(800).optional(), earned_at: z.string().optional(), evidence: z.array(z.string().max(300)).max(20).optional() })
 const panelSchema = z.object({ designation: z.string().max(120).optional(), class_name: z.string().max(120).optional(), subclass_name: z.string().max(120).optional(), specialization: z.string().max(120).optional(), rank: z.string().max(60).optional(), assessment_status: z.string().max(120).optional(), traits: z.array(rankedItem).max(100).optional(), skills: z.array(rankedItem).max(300).optional(), titles: z.array(rankedItem).max(100).optional(), achievements: z.array(achievement).max(300).optional(), conditions: z.array(z.object({ name: z.string().min(1).max(120), kind: z.enum(['buff','debuff','neutral']), description: z.string().max(500).optional(), expires_at: z.string().optional() })).max(100).optional(), unlocks: z.array(rankedItem).max(100).optional(), records: z.array(achievement).max(200).optional(), history: z.array(z.object({ assessed_at: z.string(), summary: z.string().max(500), source: z.string().max(200).optional(), changes: z.array(z.string().max(300)).max(50).optional() })).max(200).optional() })
+const attributeUpdate = z.object({ name: z.string().min(1).max(80), score: z.number().min(0), max_score: z.number().positive().optional(), evidence: z.string().min(1).max(500), confidence: z.number().min(0).max(1) })
+const progressionUpdate = z.object({ level: z.number().int().positive().optional(), xp: z.number().int().nonnegative().optional(), active_arc: z.string().min(1).max(120).optional(), title: z.string().min(1).max(120).optional() })
 
 function authenticate(req: ApiRequest): OAuthPayload | null {
   const value = req.headers.authorization
@@ -25,7 +27,7 @@ function authenticate(req: ApiRequest): OAuthPayload | null {
 function textResult(value: unknown, message: string) { return { content: [{ type: 'text' as const, text: message }], structuredContent: value as Record<string, unknown> } }
 
 function createServer(auth: OAuthPayload) {
-  const server = new McpServer({ name: 'Axiom Personal Progression', version: '1.0.0' }, { instructions: 'Axiom is a private, evidence-based status panel. Use read tools for current state. Submit only facts the owner explicitly reported in the current conversation. Never invent measurements. All submitted evidence enters a pending owner-review queue; this server cannot approve or delete it.' })
+  const server = new McpServer({ name: 'Axiom Personal Progression', version: '1.1.0' }, { instructions: 'Axiom is a private, evidence-based character status system. ChatGPT evaluates owner-provided facts; Axiom stores and displays the result. Use upsert_character_panel for complete evaluated profiles, including supported attribute and progression updates. Never invent measurements, ranks, or achievements.' })
   const commonMeta = { securitySchemes: schemes }
 
   server.registerTool('get_axiom_profile', {
@@ -45,10 +47,10 @@ function createServer(auth: OAuthPayload) {
   })
 
   server.registerTool('upsert_character_panel', {
-    title: 'Update evaluated character panel', description: 'Replace the current structured character panel with an assessment prepared from owner-provided evidence. Axiom stores and versions this assessment; it does not calculate ranks or infer facts.', inputSchema: { panel: panelSchema, assessed_at: z.iso.datetime({ offset: true }), source_reference: z.string().min(1).max(200) }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }, _meta: { ...commonMeta, 'openai/toolInvocation/invoking': 'Updating character panel', 'openai/toolInvocation/invoked': 'Character panel updated' },
-  }, async ({ panel, assessed_at, source_reference }) => {
+    title: 'Update evaluated character panel', description: 'Store a complete ChatGPT-evaluated character profile and optionally update named core attributes plus overall level, XP, arc, and title. Every replacement preserves the prior panel version. Use only owner-provided evidence and include confidence for attribute assessments.', inputSchema: { panel: panelSchema, attributes: z.array(attributeUpdate).max(50).optional(), progression: progressionUpdate.optional(), assessed_at: z.iso.datetime({ offset: true }), source_reference: z.string().min(1).max(200) }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }, _meta: { ...commonMeta, 'openai/toolInvocation/invoking': 'Updating character panel', 'openai/toolInvocation/invoked': 'Character panel updated' },
+  }, async ({ panel, attributes, progression, assessed_at, source_reference }) => {
     if (!hasScope(auth, 'axiom.write')) throw new Error('Missing axiom.write permission')
-    const result = await characterCall<Record<string, unknown>>(auth.session, 'upsert', { panel, assessed_at, source_reference })
+    const result = await characterCall<Record<string, unknown>>(auth.session, 'upsert', { panel, attributes: attributes ?? [], progression: progression ?? {}, assessed_at, source_reference })
     return textResult(result, 'Axiom stored the evaluated character panel and preserved the prior version.')
   })
 
