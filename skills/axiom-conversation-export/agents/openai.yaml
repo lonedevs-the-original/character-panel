@@ -1,0 +1,4 @@
+interface:
+  display_name: "Axiom Conversation Export"
+  short_description: "Turn a conversation into an Axiom progress update"
+  default_prompt: "Use $axiom-conversation-export to create a schema-v1 Axiom JSON import from supported progress evidence in this conversation."

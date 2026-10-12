@@ -7,19 +7,23 @@
 - Workspace: `D:\Projects\GitHub projects\personal-progression`
 - Supabase project: `cinzvrpcelfhicxoheyh`
 - Inbox table: `public.progress_entries`
-- Current status: implemented app with manual JSON import and a pending review queue
+- Current status: implemented app with paste/file JSON import, schema validation, preview, and a pending review queue
 
 ## Purpose
 
 This project is a private, evidence-based personal status panel. It tracks real development through measurements, reports, milestones, habits, quests, and periodic evaluations. Its presentation may feel like a character status panel from a novel, but scores must remain explainable and traceable to evidence.
 
-## Paste this into another chat
+## Preferred conversation skill
+
+The canonical reusable converter is in `skills/axiom-conversation-export`. Give that skill to a compatible chat or attach its `SKILL.md` and `references/schema.md`, then ask it to create an Axiom update from the current conversation.
+
+## Manual prompt for chats without skills
 
 > Work with the project `personal-progression` at `D:\Projects\GitHub projects\personal-progression` and Supabase project `cinzvrpcelfhicxoheyh`. Read `PROJECT_REFERENCE.md` before acting. Extract only progress evidence relevant to the owner's personal tracker from our conversation. Do not invent measurements or silently change derived scores. If you have authorized Supabase access, insert entries into `public.progress_entries` with `user_id` set to `3099b2b0-3ef4-484e-a4ac-d55fba1b6687`, `status` set to `pending`, and an honest `source_reference`; report exactly what you added. Otherwise return a JSON submission envelope matching this file so it can be pasted into the app. Preserve dates, units, uncertainty, and source context. Summarize sensitive journal content minimally.
 
 ## Submission envelope
 
-Other chats should either submit this object to the implemented inbox or return it verbatim for later import.
+Other chats should return this object verbatim for later upload or paste into Axiom.
 
 ```json
 {

@@ -74,3 +74,9 @@ export interface SubmissionEnvelope {
   suggested_effects?: SuggestedEffect[]
   requires_owner_review?: boolean
 }
+
+export interface ValidatedSubmissionEnvelope extends SubmissionEnvelope {
+  reported_at: string
+  source: { type: 'conversation'; reference: string }
+  requires_owner_review: true
+}

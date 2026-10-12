@@ -2,6 +2,8 @@
 
 A private, single-owner progression tracker built around evidence, quests, attributes, and cross-chat updates.
 
+Conversation updates can be pasted or uploaded as schema-v1 JSON. The app validates and previews the document before adding its entries to the owner's pending review queue. A reusable converter skill lives at `skills/axiom-conversation-export`.
+
 ## Features
 
 - Persistent Supabase owner session

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowUpRight, BookOpen, ChevronRight, CircleDot, Download, FileInput, LogOut, Menu, Plus, ShieldCheck, Sparkles, X } from 'lucide-react'
 import { customAuth } from './lib/api'
-import type { Attribute, EvidenceEntry, Profile, Quest, SubmissionEnvelope } from './types'
+import type { Attribute, EvidenceEntry, Profile, Quest, ValidatedSubmissionEnvelope } from './types'
 import { Login } from './components/Login'
 import { AttributeCard } from './components/AttributeCard'
 import { QuestRow } from './components/QuestRow'
@@ -46,7 +46,7 @@ export default function App() {
     try { await customAuth.call('add_evidence', draft); setModal(null); setNotice('Evidence added to your record.'); await loadData() } catch (e) { setNotice(e instanceof Error ? e.message : 'Save failed') }
   }
 
-  async function importEnvelope(envelope: SubmissionEnvelope) {
+  async function importEnvelope(envelope: ValidatedSubmissionEnvelope) {
     const sharedEffects = envelope.suggested_effects ?? []
     const rows = envelope.entries.map((entry) => ({ ...entry, occurred_at: entry.occurred_at ?? `${envelope.effective_date ?? new Date().toISOString().slice(0, 10)}T12:00:00+05:00` }))
     try { await customAuth.call('import_envelope', { ...envelope, entries: rows, suggested_effects: sharedEffects }); setModal(null); setNotice(`${rows.length} conversation update${rows.length === 1 ? '' : 's'} added for review.`); await loadData() } catch (e) { setNotice(e instanceof Error ? e.message : 'Import failed') }
