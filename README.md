@@ -4,6 +4,8 @@ A private, single-owner progression tracker built around evidence, quests, attri
 
 Conversation updates can be pasted or uploaded as schema-v1 JSON. The app validates and previews the document before adding its entries to the owner's pending review queue. A reusable converter skill lives at `skills/axiom-conversation-export`.
 
+The production deployment also exposes a private streamable-HTTP MCP server at `https://character-panel.vercel.app/mcp`. It uses OAuth 2.1 authorization-code flow with PKCE and the existing owner credentials. Its write tool can only add pending evidence; approval and deletion remain inside the owner dashboard.
+
 ## Features
 
 - Persistent Supabase owner session
