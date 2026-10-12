@@ -20,7 +20,15 @@ export function sendHtml(res: ServerResponse, status: number, body: string) {
 
 export async function readBody(req: ApiRequest): Promise<string> {
   if (typeof req.body === 'string') return req.body
-  if (req.body && typeof req.body === 'object') return JSON.stringify(req.body)
+  if (req.body && typeof req.body === 'object') {
+    if (req.headers['content-type']?.includes('application/json')) return JSON.stringify(req.body)
+    const params = new URLSearchParams()
+    for (const [key, value] of Object.entries(req.body as Record<string, unknown>)) {
+      if (Array.isArray(value)) value.forEach(item => params.append(key, String(item)))
+      else if (value !== undefined && value !== null) params.set(key, String(value))
+    }
+    return params.toString()
+  }
   const chunks: Buffer[] = []
   for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
   return Buffer.concat(chunks).toString('utf8')
