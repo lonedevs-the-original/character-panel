@@ -8,7 +8,7 @@ export function AttributeCard({ attribute }: { attribute: Attribute }) {
         <div><span className="domain-label">{attribute.domain}</span><h3>{attribute.name}</h3></div>
         <strong>{attribute.score}<small>/{attribute.max_score}</small></strong>
       </div>
-      <div className="meter"><span style={{ width: `${pct}%` }} /></div>
+      <div className="meter"><span style={{ width: `${pct}%` }} /></div><small className="assessment-note">Assessed from approved evidence</small>
     </article>
   )
 }

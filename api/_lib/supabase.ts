@@ -17,3 +17,9 @@ export async function progressCall<T>(session: string, action: string, payload: 
   if (error) throw new Error(error.message)
   return data as T
 }
+
+export async function characterCall<T>(session: string, action: string, payload: Record<string, unknown> = {}) {
+  const { data, error } = await client().rpc('progress_character_api', { p_token: session, p_action: action, p_payload: payload })
+  if (error) throw new Error(error.message)
+  return data as T
+}

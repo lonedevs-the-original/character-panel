@@ -17,4 +17,11 @@ export const customAuth = {
     if (error) throw error
     return data as T
   },
+  async character<T>(action: 'read' | 'upsert', payload: Record<string, unknown> = {}) {
+    const token = localStorage.getItem(tokenKey)
+    if (!token) throw new Error('No session')
+    const { data, error } = await supabase.rpc('progress_character_api', { p_token: token, p_action: action, p_payload: payload })
+    if (error) throw error
+    return data as T
+  },
 }

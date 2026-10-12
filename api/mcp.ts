@@ -5,13 +5,16 @@ import * as z from 'zod/v4'
 import { MCP_RESOURCE, RESOURCE_METADATA_URL } from './_lib/config.js'
 import { sendJson, type ApiRequest } from './_lib/http.js'
 import { hasScope, open, type OAuthPayload } from './_lib/oauth.js'
-import { progressCall } from './_lib/supabase.js'
+import { characterCall, progressCall } from './_lib/supabase.js'
 
 const domain = z.enum(['physical', 'mental', 'intellectual', 'discipline', 'social', 'life'])
 const kind = z.enum(['measurement', 'activity', 'milestone', 'habit_check', 'reflection', 'correction'])
 const effect = z.object({ target: z.string().min(1).max(80), direction: z.enum(['increase', 'decrease', 'none']).optional(), delta: z.number().finite().optional(), reason: z.string().max(300).optional() })
 const entry = z.object({ domain, metric: z.string().max(80).optional(), kind, value: z.number().finite().optional(), unit: z.string().max(40).optional(), summary: z.string().min(1).max(500), confidence: z.number().min(0).max(1).optional(), occurred_at: z.iso.datetime({ offset: true }).optional(), tags: z.array(z.string().max(40)).max(20).optional(), sensitive: z.boolean().optional() })
 const schemes = [{ type: 'oauth2', scopes: ['axiom.read', 'axiom.write'] }]
+const rankedItem = z.object({ name: z.string().min(1).max(120), rank: z.string().max(60).optional(), level: z.number().nonnegative().optional(), description: z.string().max(800).optional(), evidence: z.array(z.string().max(300)).max(20).optional(), confidence: z.number().min(0).max(1).optional(), status: z.enum(['active','latent','locked','unassessed']).optional(), parent: z.string().max(120).optional() })
+const achievement = z.object({ name: z.string().min(1).max(120), category: z.string().max(60).optional(), rarity: z.string().max(60).optional(), description: z.string().max(800).optional(), earned_at: z.string().optional(), evidence: z.array(z.string().max(300)).max(20).optional() })
+const panelSchema = z.object({ designation: z.string().max(120).optional(), class_name: z.string().max(120).optional(), subclass_name: z.string().max(120).optional(), specialization: z.string().max(120).optional(), rank: z.string().max(60).optional(), assessment_status: z.string().max(120).optional(), traits: z.array(rankedItem).max(100).optional(), skills: z.array(rankedItem).max(300).optional(), titles: z.array(rankedItem).max(100).optional(), achievements: z.array(achievement).max(300).optional(), conditions: z.array(z.object({ name: z.string().min(1).max(120), kind: z.enum(['buff','debuff','neutral']), description: z.string().max(500).optional(), expires_at: z.string().optional() })).max(100).optional(), unlocks: z.array(rankedItem).max(100).optional(), records: z.array(achievement).max(200).optional(), history: z.array(z.object({ assessed_at: z.string(), summary: z.string().max(500), source: z.string().max(200).optional(), changes: z.array(z.string().max(300)).max(50).optional() })).max(200).optional() })
 
 function authenticate(req: ApiRequest): OAuthPayload | null {
   const value = req.headers.authorization
@@ -37,8 +40,16 @@ function createServer(auth: OAuthPayload) {
     title: 'Read character panel', description: 'Use this when the owner asks about current attributes, quests, recent evidence, or pending updates in Axiom. This does not change data.', inputSchema: {}, annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, _meta: commonMeta,
   }, async () => {
     if (!hasScope(auth, 'axiom.read')) throw new Error('Missing axiom.read permission')
-    const data = await progressCall<Record<string, unknown>>(auth.session, 'bootstrap')
-    return textResult(data, 'Here is the current Axiom character panel and review queue.')
+    const [data, character_panel] = await Promise.all([progressCall<Record<string, unknown>>(auth.session, 'bootstrap'), characterCall<Record<string, unknown>>(auth.session, 'read')])
+    return textResult({ ...data, character_panel }, 'Here is the current Axiom character panel and review queue.')
+  })
+
+  server.registerTool('upsert_character_panel', {
+    title: 'Update evaluated character panel', description: 'Replace the current structured character panel with an assessment prepared from owner-provided evidence. Axiom stores and versions this assessment; it does not calculate ranks or infer facts.', inputSchema: { panel: panelSchema, assessed_at: z.iso.datetime({ offset: true }), source_reference: z.string().min(1).max(200) }, annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }, _meta: { ...commonMeta, 'openai/toolInvocation/invoking': 'Updating character panel', 'openai/toolInvocation/invoked': 'Character panel updated' },
+  }, async ({ panel, assessed_at, source_reference }) => {
+    if (!hasScope(auth, 'axiom.write')) throw new Error('Missing axiom.write permission')
+    const result = await characterCall<Record<string, unknown>>(auth.session, 'upsert', { panel, assessed_at, source_reference })
+    return textResult(result, 'Axiom stored the evaluated character panel and preserved the prior version.')
   })
 
   server.registerTool('submit_progress_evidence', {
